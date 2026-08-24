@@ -1,5 +1,6 @@
 """FastAPI web server for Busan theater timetable."""
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request, Query
@@ -8,16 +9,22 @@ from fastapi.templating import Jinja2Templates
 
 from database import init_db, get_screenings, get_branches, get_movies, get_last_scraped
 
-app = FastAPI(title="부산 영화 상영시간표", version="1.0.0")
+# Eagerly initialise DB schema at import time so Vercel cold-starts work fine
+init_db()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Re-run init_db in case the mounted volume changed (local dev --reload)
+    init_db()
+    yield
+
+
+app = FastAPI(title="부산 영화 상영시간표", version="1.0.0", lifespan=lifespan)
 
 templates = Jinja2Templates(
     directory=os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 )
-
-
-@app.on_event("startup")
-def startup():
-    init_db()
 
 
 @app.get("/", response_class=HTMLResponse)
