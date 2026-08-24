@@ -1,0 +1,43 @@
+name: Daily Scraper
+
+on:
+  schedule:
+    # Runs at 20:00 UTC every day (05:00 KST next day)
+    - cron: '0 20 * * *'
+  workflow_dispatch: # Allows manual trigger from the GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to push changes back to the repo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        run: python scraper.py
+
+      - name: Commit and push timetable.db
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add timetable.db
+          # Check if there are changes before committing
+          if ! git diff --staged --quiet; then
+            # We omit [skip ci] so that the push triggers Render/Railway auto-deployment
+            git commit -m "Auto-update movie timetable data"
+            git push
+          else
+            echo "No changes in timetable.db"
+          fi

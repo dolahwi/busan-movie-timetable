@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>부산 영화 상영시간표</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Nanum Gothic', -apple-system, BlinkMacSystemFont, monospace;
+            background: #f6f6ef;
+            color: #222;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 8px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Header */
+        header {
+            background: #ff6600;
+            color: #fff;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+        }
+        header h1 {
+            font-size: 16px;
+            font-weight: bold;
+            display: inline;
+        }
+        header .meta {
+            float: right;
+            font-size: 11px;
+            color: #ffe0c0;
+        }
+
+        /* Date Navigation */
+        nav.dates {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            margin-bottom: 8px;
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        nav.dates a {
+            padding: 4px 10px;
+            text-decoration: none;
+            color: #333;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        nav.dates a:hover { background: #eee; }
+        nav.dates a.active {
+            background: #ff6600;
+            color: #fff;
+            border-color: #ff6600;
+            font-weight: bold;
+        }
+        nav.dates a.weekend { color: #c00; }
+        nav.dates a.active.weekend { color: #fff; }
+
+        /* Filters */
+        .filters {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            margin-bottom: 8px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters label { font-size: 12px; color: #666; }
+        .filters select {
+            padding: 3px 6px;
+            border: 1px solid #ccc;
+            font-size: 13px;
+            max-width: 220px;
+        }
+        .filters button {
+            padding: 3px 12px;
+            background: #ff6600;
+            color: #fff;
+            border: 1px solid #e55;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .filters a.reset {
+            font-size: 12px;
+            color: #666;
+            text-decoration: none;
+        }
+
+        /* Stats */
+        .stats {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 6px;
+            padding: 4px 0;
+        }
+
+        /* Theater Group */
+        .theater-group {
+            margin-bottom: 12px;
+        }
+        .theater-group h2 {
+            font-size: 14px;
+            font-weight: bold;
+            background: #333;
+            color: #fff;
+            padding: 4px 8px;
+            margin-bottom: 0;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            margin-bottom: 2px;
+        }
+        th {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            padding: 4px 6px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        td {
+            border: 1px solid #ddd;
+            padding: 3px 6px;
+            font-size: 13px;
+            vertical-align: top;
+        }
+        tr:nth-child(even) { background: #fafafa; }
+        tr:hover { background: #fff8f0; }
+
+        td.time {
+            white-space: nowrap;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #333;
+        }
+        td.title { font-weight: bold; }
+        td.seats {
+            text-align: center;
+            white-space: nowrap;
+            font-family: monospace;
+        }
+        td.seats.low { color: #c00; font-weight: bold; }
+        a.book {
+            color: #ff6600;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        a.book:hover { text-decoration: underline; }
+
+        .empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+            font-size: 14px;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid #ddd;
+            margin-top: 12px;
+            padding: 8px 0;
+            font-size: 11px;
+            color: #999;
+            text-align: center;
+        }
+
+        /* Mobile */
+        @media (max-width: 600px) {
+            body { padding: 4px; font-size: 13px; }
+            nav.dates { gap: 3px; }
+            nav.dates a { padding: 3px 6px; font-size: 12px; }
+            .filters { flex-direction: column; align-items: stretch; }
+            .filters select { max-width: 100%; }
+            table { font-size: 12px; }
+            th, td { padding: 2px 4px; }
+            /* Hide less important columns on mobile */
+            .hide-mobile { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎬 부산 영화 상영시간표</h1>
+        <span class="meta">
+            {% if last_scraped %}
+                갱신: {{ last_scraped[:16] }}
+            {% else %}
+                데이터 없음 — python scraper.py 실행 필요
+            {% endif %}
+        </span>
+    </header>
+
+    <!-- Date Navigation -->
+    <nav class="dates">
+        {% for d in date_nav %}
+        <a href="/?date={{ d.date }}{% if selected_branch %}&branch={{ selected_branch }}{% endif %}{% if selected_movie %}&movie={{ selected_movie }}{% endif %}"
+           class="{% if d.active %}active{% endif %} {% if d.is_weekend %}weekend{% endif %}">
+            {{ d.label }}
+        </a>
+        {% endfor %}
+    </nav>
+
+    <!-- Filters -->
+    <form class="filters" method="get" action="/">
+        <input type="hidden" name="date" value="{{ date }}">
+        <label for="branch">극장:</label>
+        <select name="branch" id="branch">
+            <option value="">전체</option>
+            {% for b in branches %}
+            <option value="{{ b }}" {% if b == selected_branch %}selected{% endif %}>{{ b }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="movie">영화:</label>
+        <select name="movie" id="movie">
+            <option value="">전체</option>
+            {% for m in movies %}
+            <option value="{{ m }}" {% if m == selected_movie %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="submit">필터</button>
+        <a href="/?date={{ date }}" class="reset">[초기화]</a>
+    </form>
+
+    <!-- Stats -->
+    <div class="stats">
+        📅 {{ date }} &nbsp;|&nbsp; 총 {{ total_count }}개 상영
+        {% if selected_branch %} &nbsp;|&nbsp; 🏢 {{ selected_branch }}{% endif %}
+        {% if selected_movie %} &nbsp;|&nbsp; 🎬 {{ selected_movie }}{% endif %}
+    </div>
+
+    <!-- Timetable -->
+    {% if grouped %}
+        {% for group_name, items in grouped.items() %}
+        <div class="theater-group">
+            <h2>{{ group_name }} ({{ items|length }})</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>시간</th>
+                        <th>영화</th>
+                        <th>상영관</th>
+                        <th class="hide-mobile">포맷</th>
+                        <th>잔여석</th>
+                        <th class="hide-mobile">예매</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in items %}
+                    <tr>
+                        <td class="time">
+                            {{ s.start_time }}{% if s.end_time %}~{{ s.end_time }}{% endif %}
+                        </td>
+                        <td class="title">{{ s.movie_title }}</td>
+                        <td>{{ s.screen_name }}</td>
+                        <td class="hide-mobile">{{ s.format }}</td>
+                        <td class="seats {% if s.remaining_seats and '/' in s.remaining_seats and s.remaining_seats.split('/')[0]|int < 20 %}low{% endif %}">
+                            {{ s.remaining_seats or '-' }}
+                        </td>
+                        <td class="hide-mobile">
+                            {% if s.booking_url %}
+                            <a href="{{ s.booking_url }}" target="_blank" rel="noopener" class="book">예매→</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty">
+            <p>📭 이 날짜의 상영 데이터가 없습니다.</p>
+            <p style="margin-top:8px; font-size:12px;">
+                <code>python scraper.py</code> 를 실행하여 데이터를 가져오세요.
+            </p>
+        </div>
+    {% endif %}
+
+    <footer>
+        부산 영화관 상영시간표 · 영화의전당 · 롯데시네마 · 메가박스
+        <br>
+        <code>python scraper.py</code> 로 데이터 갱신 &nbsp;|&nbsp;
+        <a href="/api/screenings?date={{ date }}" style="color:#999;">JSON API</a>
+    </footer>
+</body>
+</html>
