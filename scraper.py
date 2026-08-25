@@ -1,4 +1,4 @@
-"""CLI scraping engine — fetches 7 days of screenings from all 6 branches."""
+"""CLI scraping engine — fetches 7 days of screenings from all 7 branches."""
 import sys
 import time
 import logging
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from scrapers.megabox import MegaboxScraper
 from scrapers.lotte import LotteScraper
 from scrapers.dureraum import DureraumScraper
+from scrapers.cgv import CGVScraper
 from database import init_db, save_screenings, clear_old_data, get_connection
 
 logging.basicConfig(
@@ -16,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# All 6 target scrapers
+# All 7 target scrapers
 SCRAPERS = [
     # Megabox branches
     MegaboxScraper("0079"),   # 해운대(장산)
@@ -27,6 +28,8 @@ SCRAPERS = [
     LotteScraper("2007"),     # 동래
     # Busan Cinema Center
     DureraumScraper(),        # 영화의전당
+    # CGV
+    CGVScraper(),             # CGV 센텀시티
 ]
 
 DAYS_AHEAD = 7

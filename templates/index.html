@@ -248,8 +248,10 @@
     <!-- Timetable -->
     {% if grouped %}
         {% for group_name, items in grouped.items() %}
+        {% set brand_colors = {'CGV': '#e8003d', '메가박스': '#2b2b2b', '롯데시네마': '#c8102e', '영화의전당': '#1a5276'} %}
+        {% set brand_key = group_name.split(' ')[0] %}
         <div class="theater-group">
-            <h2>{{ group_name }} ({{ items|length }})</h2>
+            <h2><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ brand_colors.get(brand_key, '#888') }};margin-right:6px;vertical-align:middle;"></span>{{ group_name }} ({{ items|length }})</h2>
             <table>
                 <thead>
                     <tr>
