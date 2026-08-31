@@ -60,7 +60,6 @@ def _run_scraper_background():
     except Exception as exc:
         logger.error(f"Auto-scrape failed: {exc!r}")
     finally:
-        global _scraping
         _scraping = False
 
 
