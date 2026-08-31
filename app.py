@@ -1,31 +1,93 @@
-"""FastAPI web server for Busan theater timetable."""
-import os
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+"""FastAPI web server for Busan theater timetable.
 
-from fastapi import FastAPI, Request, Query
+Startup behaviour
+-----------------
+On cold-start, if the database has no rows for today (KST), the server
+automatically runs the scraper in a background thread so the first visitor
+sees data within ~60 seconds rather than an empty page.
+
+A manual refresh endpoint is also provided:  POST /api/refresh
+"""
+import os
+import logging
+import threading
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+
+from fastapi import FastAPI, Request, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from database import init_db, get_screenings, get_branches, get_movies, get_last_scraped
 
-# Eagerly initialise DB schema at import time so Vercel cold-starts work fine
+logger = logging.getLogger(__name__)
+
+# Korea Standard Time
+KST = timezone(timedelta(hours=9))
+
+# ── DB initialisation (runs at import time for Vercel cold-starts) ────────────
 init_db()
 
+# ── Background scrape state ───────────────────────────────────────────────────
+_scrape_lock = threading.Lock()
+_scraping = False   # True while a scrape is in progress
 
+
+def _is_data_stale() -> bool:
+    """Return True if today (KST) has zero rows in the DB."""
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    rows = get_screenings(today)
+    return len(rows) == 0
+
+
+def _run_scraper_background():
+    """Run the full 7-day scraper in a background thread (non-blocking)."""
+    global _scraping
+    with _scrape_lock:
+        if _scraping:
+            logger.info("Scraper already running — skipping duplicate trigger")
+            return
+        _scraping = True
+
+    try:
+        logger.info("Auto-scrape triggered (background thread)")
+        from scraper import run_scraper
+        result = run_scraper()
+        logger.info(
+            f"Auto-scrape done: {result['total_screenings']} screenings, "
+            f"{result['total_errors']} errors"
+        )
+    except Exception as exc:
+        logger.error(f"Auto-scrape failed: {exc!r}")
+    finally:
+        global _scraping
+        _scraping = False
+
+
+# ── Lifespan: auto-scrape on startup if DB is empty ──────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Re-run init_db in case the mounted volume changed (local dev --reload)
     init_db()
+
+    if _is_data_stale():
+        logger.info("DB is empty for today — launching background scrape")
+        thread = threading.Thread(target=_run_scraper_background, daemon=True)
+        thread.start()
+    else:
+        logger.info("DB has today's data — skipping startup scrape")
+
     yield
 
 
-app = FastAPI(title="부산 영화 상영시간표", version="1.0.0", lifespan=lifespan)
+# ── App ───────────────────────────────────────────────────────────────────────
+app = FastAPI(title="부산 영화 상영시간표", version="2.0.0", lifespan=lifespan)
 
 templates = Jinja2Templates(
     directory=os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 )
 
+
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def index(
@@ -35,14 +97,14 @@ async def index(
     movie: str = None,
 ):
     """Main timetable page."""
-    today = datetime.now()
+    now_kst = datetime.now(KST)
     if not date:
-        date = today.strftime("%Y-%m-%d")
+        date = now_kst.strftime("%Y-%m-%d")
 
-    # Generate 7-day date navigation
+    # 7-day date navigation bar
     date_nav = []
     for i in range(7):
-        d = today + timedelta(days=i)
+        d = now_kst + timedelta(days=i)
         d_str = d.strftime("%Y-%m-%d")
         day_label = "오늘" if i == 0 else d.strftime("%m/%d")
         weekday_kr = ["월", "화", "수", "목", "금", "토", "일"][d.weekday()]
@@ -53,19 +115,16 @@ async def index(
             "is_weekend": d.weekday() >= 5,
         })
 
-    # Fetch data
-    screenings = get_screenings(date, branch=branch, movie=movie)
-    branches = get_branches(date)
-    movies = get_movies(date)
+    screenings  = get_screenings(date, branch=branch, movie=movie)
+    branches    = get_branches(date)
+    movies      = get_movies(date)
     last_scraped = get_last_scraped()
 
-    # Group screenings by brand → branch
-    grouped = {}
+    # Group by brand → branch name for display
+    grouped: dict[str, list] = {}
     for s in screenings:
         key = f"{s['theater_brand']} {s['branch_name']}"
-        if key not in grouped:
-            grouped[key] = []
-        grouped[key].append(s)
+        grouped.setdefault(key, []).append(s)
 
     return templates.TemplateResponse(
         request=request,
@@ -81,6 +140,7 @@ async def index(
             "selected_movie": movie or "",
             "total_count": len(screenings),
             "last_scraped": last_scraped,
+            "scraping_in_progress": _scraping,
         },
     )
 
@@ -91,12 +151,50 @@ async def api_screenings(
     branch: str = Query(default=None),
     movie: str = Query(default=None),
 ):
-    """JSON API for screening data."""
+    """JSON API — screening data for a given date."""
     if not date:
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = datetime.now(KST).strftime("%Y-%m-%d")
     screenings = get_screenings(date, branch=branch, movie=movie)
     return JSONResponse(content={
         "date": date,
         "count": len(screenings),
         "screenings": screenings,
+    })
+
+
+@app.post("/api/refresh")
+async def api_refresh(background_tasks: BackgroundTasks):
+    """Manually trigger a background scrape (idempotent — won't double-run)."""
+    if _scraping:
+        return JSONResponse(
+            content={"status": "already_running", "message": "스크래핑이 이미 진행 중입니다."},
+            status_code=202,
+        )
+    background_tasks.add_task(_run_scraper_background)
+    return JSONResponse(
+        content={
+            "status": "started",
+            "message": "스크래핑을 시작했습니다. 약 60~90초 후 데이터를 확인하세요.",
+        }
+    )
+
+
+@app.get("/api/status")
+async def api_status():
+    """Health check: DB row counts and scrape status."""
+    from database import get_connection
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT date, COUNT(*) as cnt FROM screenings GROUP BY date ORDER BY date"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    return JSONResponse(content={
+        "today_kst": today,
+        "scraping_in_progress": _scraping,
+        "last_scraped": get_last_scraped(),
+        "rows_by_date": {r["date"]: r["cnt"] for r in rows},
     })

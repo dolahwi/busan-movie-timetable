@@ -205,6 +205,14 @@
         </span>
     </header>
 
+    {% if scraping_in_progress %}
+    <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin:8px 0;border-radius:4px;font-size:13px;">
+        ⏳ <strong>데이터 수집 중...</strong> 약 60~90초 후 페이지를 새로고침하면 최신 상영 정보를 볼 수 있습니다.
+        <span style="float:right;"><a href="javascript:location.reload()">새로고침</a></span>
+        <script>setTimeout(()=>location.reload(), 30000);</script>
+    </div>
+    {% endif %}
+
     <!-- Date Navigation -->
     <nav class="dates">
         {% for d in date_nav %}
@@ -288,18 +296,43 @@
         {% endfor %}
     {% else %}
         <div class="empty">
+            {% if scraping_in_progress %}
+            <p>⏳ 데이터 수집 중입니다. 잠시 후 새로고침해 주세요.</p>
+            <script>setTimeout(()=>location.reload(), 15000);</script>
+            {% else %}
             <p>📭 이 날짜의 상영 데이터가 없습니다.</p>
             <p style="margin-top:8px; font-size:12px;">
-                <code>python scraper.py</code> 를 실행하여 데이터를 가져오세요.
+                <a href="javascript:void(0)" onclick="triggerRefresh()" style="color:#ff6600;">▶ 지금 바로 데이터 수집하기</a>
+                &nbsp;또는&nbsp; <a href="/api/status" style="color:#999;">상태 확인</a>
             </p>
+            {% endif %}
         </div>
+        <script>
+        function triggerRefresh() {
+            fetch('/api/refresh', {method:'POST'})
+              .then(r=>r.json())
+              .then(d=>{ alert(d.message); setTimeout(()=>location.reload(), 5000); })
+              .catch(()=>alert('요청 실패'));
+        }
+        </script>
     {% endif %}
 
     <footer>
-        부산 영화관 상영시간표 · 영화의전당 · 롯데시네마 · 메가박스
+        부산 영화관 상영시간표 · 영화의전당 · 롯데시네마 · 메가박스 · CGV
         <br>
-        <code>python scraper.py</code> 로 데이터 갱신 &nbsp;|&nbsp;
+        <a href="javascript:void(0)" onclick="triggerRefresh()" style="color:#ff6600;">데이터 새로고침</a>
+        &nbsp;|&nbsp;
+        <a href="/api/status" style="color:#999;">상태</a>
+        &nbsp;|&nbsp;
         <a href="/api/screenings?date={{ date }}" style="color:#999;">JSON API</a>
     </footer>
+    <script>
+    function triggerRefresh() {
+        fetch('/api/refresh', {method:'POST'})
+          .then(r=>r.json())
+          .then(d=>{ alert(d.message); setTimeout(()=>location.reload(), 5000); })
+          .catch(()=>alert('요청 실패'));
+    }
+    </script>
 </body>
 </html>
