@@ -1,0 +1,69 @@
+name: Daily Scraper
+
+on:
+  schedule:
+    # 05:00 KST = 20:00 UTC (previous day)
+    - cron: "0 20 * * *"
+  # Allow manual trigger from the Actions tab → "Run workflow" button
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write   # needed to commit timetable.db back to the repo
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - uses: actions/checkout@v4
+        with:
+          # Use a PAT so the push step can trigger Vercel redeploy via GitHub
+          token: ${{ github.token }}
+
+      # ── 2. Python setup ──────────────────────────────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # ── 3. Install Python deps ───────────────────────────────────────────
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── 4. Install Playwright Chromium (needed for CGV scraper) ──────────
+      - name: Install Playwright Chromium + OS deps
+        run: python -m playwright install chromium --with-deps
+
+      # ── 5. Scrape ────────────────────────────────────────────────────────
+      - name: Run scraper
+        run: python scraper.py
+        env:
+          # Force KST so date calculations are correct on the Ubuntu runner
+          TZ: Asia/Seoul
+
+      # ── 6. Commit updated timetable.db ───────────────────────────────────
+      - name: Commit and push timetable.db
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add timetable.db
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: auto-update timetable $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M KST')"
+            git push
+            echo "::notice::timetable.db updated and pushed"
+          else
+            echo "::notice::timetable.db unchanged — skipping commit"
+          fi
+
+      # ── 7. Trigger Vercel redeploy via deploy hook ────────────────────────
+      - name: Trigger Vercel redeploy
+        # VERCEL_DEPLOY_HOOK is stored as a repository secret
+        # Set it at: repo → Settings → Secrets → Actions → VERCEL_DEPLOY_HOOK
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' }}
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$VERCEL_DEPLOY_HOOK")
+          echo "Vercel deploy hook response: $STATUS"
