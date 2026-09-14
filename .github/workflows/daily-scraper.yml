@@ -32,11 +32,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ── 4. Install Playwright Chromium (needed for CGV scraper) ──────────
-      - name: Install Playwright Chromium + OS deps
-        run: python -m playwright install chromium --with-deps
-
-      # ── 5. Scrape ────────────────────────────────────────────────────────
+      # ── 4. Scrape ────────────────────────────────────────────────────────
       - name: Run scraper
         run: python scraper.py
         env:
