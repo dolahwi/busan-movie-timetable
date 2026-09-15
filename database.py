@@ -95,12 +95,25 @@ def save_screenings(screenings: list, scraped_at: str = None):
         conn.close()
 
 
-def get_screenings(date: str, branch: str = None, movie: str = None) -> list[dict]:
-    """Query screenings for a given date with optional filters."""
+def get_screenings(
+    date: str,
+    branch: str = None,
+    movie: str = None,
+    theater_brand: str = None,
+) -> list[dict]:
+    """Query screenings for a given date with optional filters.
+
+    branch 필터는 branch_name만 매칭합니다.
+    theater_brand 필터가 함께 전달되면 두 조건을 AND로 결합합니다.
+    """
     conn = get_connection()
     try:
         query = "SELECT * FROM screenings WHERE date = ?"
         params: list = [date]
+
+        if theater_brand:
+            query += " AND theater_brand = ?"
+            params.append(theater_brand)
 
         if branch:
             query += " AND branch_name = ?"
@@ -118,20 +131,38 @@ def get_screenings(date: str, branch: str = None, movie: str = None) -> list[dic
         conn.close()
 
 
-def get_branches(date: str = None) -> list[str]:
-    """Get distinct branch names, optionally filtered by date."""
+def get_branches(date: str = None) -> list[dict]:
+    """극장별 지점 목록 반환 (theater_brand + branch_name 조합).
+
+    Returns list of dicts: [{"brand": "CGV", "name": "센텀시티",
+                              "label": "CGV 센텀시티", "value": "CGV|센텀시티"}, ...]
+    label  : UI에 표시할 풀네임
+    value  : URL 파라미터로 전달할 복합키 (brand|name)
+    """
     conn = get_connection()
     try:
         if date:
             rows = conn.execute(
-                "SELECT DISTINCT branch_name FROM screenings WHERE date = ? ORDER BY branch_name",
+                """SELECT DISTINCT theater_brand, branch_name
+                   FROM screenings WHERE date = ?
+                   ORDER BY theater_brand, branch_name""",
                 (date,),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT DISTINCT branch_name FROM screenings ORDER BY branch_name"
+                """SELECT DISTINCT theater_brand, branch_name
+                   FROM screenings
+                   ORDER BY theater_brand, branch_name"""
             ).fetchall()
-        return [row["branch_name"] for row in rows]
+        return [
+            {
+                "brand": row["theater_brand"],
+                "name":  row["branch_name"],
+                "label": f"{row['theater_brand']} {row['branch_name']}",
+                "value": f"{row['theater_brand']}|{row['branch_name']}",
+            }
+            for row in rows
+        ]
     finally:
         conn.close()
 

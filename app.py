@@ -114,12 +114,21 @@ async def index(
             "is_weekend": d.weekday() >= 5,
         })
 
-    screenings  = get_screenings(date, branch=branch, movie=movie)
+    # branch 파라미터는 "CGV|센텀시티" 형태의 복합키
+    # 이전 단순 branch_name 값도 하위 호환 지원 ("|" 없으면 brand 미지정)
+    if branch and "|" in branch:
+        brand_filter, branch_name = branch.split("|", 1)
+    else:
+        brand_filter = None
+        branch_name = branch or None
+
+    screenings  = get_screenings(date, branch=branch_name, movie=movie,
+                                 theater_brand=brand_filter)
     branches    = get_branches(date)
     movies      = get_movies(date)
     last_scraped = get_last_scraped()
 
-    # Group by brand → branch name for display
+    # Group by "브랜드 지점명" for display
     grouped: dict[str, list] = {}
     for s in screenings:
         key = f"{s['theater_brand']} {s['branch_name']}"
@@ -136,6 +145,7 @@ async def index(
             "branches": branches,
             "movies": movies,
             "selected_branch": branch or "",
+            "selected_branch_label": branch.replace("|", " ") if branch else "",
             "selected_movie": movie or "",
             "total_count": len(screenings),
             "last_scraped": last_scraped,

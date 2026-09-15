@@ -230,7 +230,7 @@
         <select name="branch" id="branch">
             <option value="">전체</option>
             {% for b in branches %}
-            <option value="{{ b }}" {% if b == selected_branch %}selected{% endif %}>{{ b }}</option>
+            <option value="{{ b.value }}" {% if b.value == selected_branch %}selected{% endif %}>{{ b.label }}</option>
             {% endfor %}
         </select>
 
@@ -249,7 +249,7 @@
     <!-- Stats -->
     <div class="stats">
         📅 {{ date }} &nbsp;|&nbsp; 총 {{ total_count }}개 상영
-        {% if selected_branch %} &nbsp;|&nbsp; 🏢 {{ selected_branch }}{% endif %}
+        {% if selected_branch %} &nbsp;|&nbsp; 🏢 {{ selected_branch_label }}{% endif %}
         {% if selected_movie %} &nbsp;|&nbsp; 🎬 {{ selected_movie }}{% endif %}
     </div>
 
