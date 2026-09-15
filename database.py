@@ -62,15 +62,15 @@ def save_screenings(screenings: list, scraped_at: str = None):
 
     conn = get_connection()
     try:
-        # Group screenings by (date, branch_name) and clear old data per group
+        # Group screenings by (date, theater_brand, branch_name) and clear old data per group
         groups = set()
         for s in screenings:
-            groups.add((s.date, s.branch_name))
+            groups.add((s.date, s.theater_brand, s.branch_name))
 
-        for date, branch in groups:
+        for date, theater_brand, branch in groups:
             conn.execute(
-                "DELETE FROM screenings WHERE date = ? AND branch_name = ?",
-                (date, branch),
+                "DELETE FROM screenings WHERE date = ? AND theater_brand = ? AND branch_name = ?",
+                (date, theater_brand, branch),
             )
 
         # Insert new screenings
